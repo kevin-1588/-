@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>우리 반 자리배치</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#e8edf1; --board:#2e4b43; --chalk:#eef3ea; --desk:#fbfbf8;
+    --line:#b9c3cc; --ink:#1f2a33; --accent:#2f5d9e; --warn:#b3402a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Gowun Dodum","Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.5}
+  main{max-width:760px;margin:0 auto;padding:16px 16px 48px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+  h1{font-family:"Jua","Gowun Dodum",sans-serif;font-weight:400;font-size:1.7rem;margin:0}
+  button{font:inherit;cursor:pointer;border:1.5px solid var(--ink);background:var(--desk);color:var(--ink);border-radius:8px;padding:8px 14px}
+  button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  button.primary{background:var(--ink);color:var(--desk)}
+  button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .panel{background:var(--desk);border:1.5px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0}
+  .row label{min-width:5.5em}
+  input[type=text],input[type=number],input[type=password]{font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  input[type=number]{width:4.5em}
+  .f{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  #apart{flex:1;min-width:10em}
+  .note{font-size:.88rem;color:#52616d;margin:4px 0 0}
+  .warn{color:var(--warn)}
+  .admin{border-color:var(--accent);border-width:2px}
+  .admin h2{font-family:"Jua","Gowun Dodum",sans-serif;font-weight:400;font-size:1.15rem;margin:0 0 6px;color:var(--accent)}
+  .boardbar{background:var(--board);color:var(--chalk);text-align:center;font-family:"Jua","Gowun Dodum",sans-serif;padding:8px;border-radius:6px;margin:14px 0 14px;letter-spacing:.3em}
+  #grid{display:flex;flex-direction:column;gap:10px;align-items:center}
+  .r{display:flex;gap:6px}
+  .seat{--w:clamp(34px,calc((100vw - 48px) / (var(--cols) + 1)),78px);
+    width:var(--w);height:calc(var(--w) * .78);background:var(--desk);border:1.5px solid var(--line);border-radius:7px;
+    display:flex;align-items:center;justify-content:center;font-family:"Jua","Gowun Dodum",sans-serif;font-size:calc(var(--w) * .4);position:relative}
+  .seat.empty{color:#a5b0b9}
+  .seat.none{visibility:hidden}
+
+  /* 오직 관리자 모드일 때만 고정 파란 모서리 표시 */
+  body.is-admin .seat.fixed{border-color:var(--accent);border-width:2px}
+  body.is-admin .seat.fixed::after{content:"";position:absolute;top:0;right:0;border-top:12px solid var(--accent);border-left:12px solid transparent;border-top-right-radius:5px}
+
+  .seat.pop{animation:pop .25s ease-out}
+  @keyframes pop{from{transform:scale(.82)}to{transform:scale(1)}}
+  body.is-admin .seat{cursor:pointer}
+  body.is-admin .seat:hover{border-color:var(--accent)}
+  .pairgap{margin-right:20px}
+  .nopair .r{gap:12px}
+
+  /* 카운트다운 오버레이 스타일 */
+  #countdownOverlay{
+    position:fixed;top:0;left:0;width:100vw;height:100vh;
+    background:rgba(31,42,51,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;
+    z-index:9999;color:#fff;font-family:"Jua",sans-serif;
+  }
+  #countdownOverlay.hidden{display:none}
+  #countdownOverlay .num{font-size:8rem;line-height:1;margin-bottom:10px;animation:pulse 0.9s infinite alternate}
+  #countdownOverlay .text{font-size:2rem;color:var(--chalk)}
+  @keyframes pulse{from{transform:scale(0.85);opacity:0.8}to{transform:scale(1.15);opacity:1}}
+
+  dialog{border:2px solid var(--ink);border-radius:12px;padding:18px;max-width:340px;width:90vw}
+  dialog::backdrop{background:rgba(31,42,51,.45)}
+  dialog form{display:flex;flex-direction:column;gap:10px}
+  dialog menu{display:flex;gap:8px;justify-content:flex-end;margin:0;padding:0}
+  @media (prefers-reduced-motion:reduce){.seat.pop,#countdownOverlay .num{animation:none}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>우리 반 자리배치</h1>
+    <button id="adminBtn">관리자</button>
+  </header>
+
+  <section class="panel" id="options">
+    <div class="row">
+      <span class="f"><label for="total" style="min-width:auto">인원수</label><input id="total" type="number" min="2" max="100"></span>
+      <span class="f"><label for="rows" style="min-width:auto">행</label><input id="rows" type="number" min="1" max="15"></span>
+      <span class="f"><label for="cols" style="min-width:auto">열</label><input id="cols" type="number" min="1" max="12"></span>
+      <button id="applySize">적용</button>
+    </div>
+    <p class="note" id="sizeInfo"></p>
+    <p class="note" id="sizeMsg" role="status" style="color:var(--accent);font-weight:bold"></p>
+    <div class="row" style="margin-top:10px">
+      <label>짝</label>
+      <button id="pairOn" class="on">짝 있음</button>
+      <button id="pairOff">짝 없음</button>
+    </div>
+    <div class="row">
+      <label>카운트다운</label>
+      <button id="cdOn">켜짐 (3초)</button>
+      <button id="cdOff" class="on">꺼짐</button>
+    </div>
+    <div class="row">
+      <label for="apart">떨어뜨릴 번호</label>
+      <input id="apart" type="text" inputmode="numeric" placeholder="예: 3, 7, 12" autocomplete="off">
+    </div>
+    <p class="note" id="apartNote">쉼표로 구분해요. 이 번호들은 서로 앞·뒤·옆·대각선에 앉지 않아요.</p>
+    <div class="row"><button class="primary" id="shuffleBtn">자리 섞기</button></div>
+  </section>
+
+  <section class="panel admin" id="adminPanel" hidden>
+    <h2>관리자 모드</h2>
+    <p class="note">자리를 누르면 그 자리에 앉을 번호를 고정해요. 관리자 모드에서는 고정 번호와 파란 표시가 보이며, 관리자 모드에서 나가면 섞기 전에는 물음표(?)로 보입니다.</p>
+    <div class="row" style="margin: 10px 0;">
+      <button id="changePwBtn">비밀번호 변경</button>
+      <button id="clearFixed">고정 모두 해제</button>
+      <button id="logout">관리자 나가기</button>
+    </div>
+    <p class="note" id="storeNote"></p>
+  </section>
+
+  <div class="boardbar">칠판</div>
+  <div id="grid"></div>
+  <p class="note warn" id="msg" role="status"></p>
+</main>
+
+<!-- 카운트다운 화면 -->
+<div id="countdownOverlay" class="hidden">
+  <div class="num" id="cdNum">3</div>
+  <div class="text">두구두구... 자리를 섞는 중!</div>
+</div>
+
+<!-- 로그인 다이얼로그 -->
+<dialog id="pwDialog">
+  <form method="dialog" id="pwForm">
+    <label for="pw">관리자 암호</label>
+    <input id="pw" type="password" autocomplete="off">
+    <p class="note warn" id="pwErr"></p>
+    <menu>
+      <button type="button" id="pwCancel">취소</button>
+      <button class="primary" id="pwOk" value="ok">들어가기</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- 비밀번호 변경 다이얼로그 -->
+<dialog id="changePwDialog">
+  <form method="dialog" id="changePwForm">
+    <label for="oldPw">기존 암호</label>
+    <input id="oldPw" type="password" autocomplete="off" required>
+    <label for="newPw" style="margin-top:6px">새 암호</label>
+    <input id="newPw" type="password" autocomplete="off" required minlength="1">
+    <label for="newPwConfirm" style="margin-top:6px">새 암호 확인</label>
+    <input id="newPwConfirm" type="password" autocomplete="off" required>
+    <p class="note warn" id="changePwErr"></p>
+    <p class="note" id="changePwSuccess" style="color:var(--accent);font-weight:bold"></p>
+    <menu>
+      <button type="button" id="changePwCancel">취소</button>
+      <button class="primary" id="changePwOk" value="ok">변경하기</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- 자리 고정 다이얼로그 -->
+<dialog id="seatDialog">
+  <form method="dialog" id="seatForm">
+    <label for="seatNum" id="seatLabel"></label>
+    <input id="seatNum" type="number" min="1" inputmode="numeric">
+    <p class="note warn" id="seatErr"></p>
+    <menu>
+      <button type="button" id="seatCancel">취소</button>
+      <button class="primary" id="seatOk" value="ok">확인</button>
+    </menu>
+  </form>
+</dialog>
+
+<script type="module">
+/* ============ 설정 ============ */
+const DEFAULT_ADMIN_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
+let currentAdminHash = localStorage.getItem("custom-admin-hash") || DEFAULT_ADMIN_HASH;
+
+const FIREBASE_CONFIG = null;
+
+/* ============ 상태 ============ */
+let cfg = { total: 28, rows: 5, cols: 6, fixed: {} };
+let pair = true;
+let countdownEnabled = false;
+let arrangement = [];
+let isShuffled = false; // 뽑기(자리 섞기) 실행 여부
+let admin = sessionStorage.getItem("admin") === "1";
+let save = async () => { localStorage.setItem("seat-cfg", JSON.stringify(cfg)); };
+
+const $ = id => document.getElementById(id);
+
+/* ============ 저장소 ============ */
+async function initStore(){
+  if(!FIREBASE_CONFIG){
+    try{ const s = JSON.parse(localStorage.getItem("seat-cfg")); if(s) cfg = { ...cfg, ...s }; }catch(e){}
+    $("storeNote").textContent = "저장소 연결 전이에요. 지금은 이 기기에서만 저장돼요.";
+    return;
+  }
+  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+  const { getFirestore, doc, onSnapshot, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  const db = getFirestore(initializeApp(FIREBASE_CONFIG));
+  const ref = doc(db, "seat", "config");
+  save = () => setDoc(ref, cfg);
+  $("storeNote").textContent = "저장소 연결됨. 고정한 자리는 모두에게 적용돼요.";
+  onSnapshot(ref, snap => {
+    if(snap.exists()){ cfg = { ...cfg, ...snap.data() }; syncArrangement(); render(); fillAdminInputs(); }
+  });
+}
+
+/* ============ 배치 로직 ============ */
+const rc = i => [Math.floor(i / cfg.cols), i % cfg.cols];
+const near = (a, b) => { const [r1,c1] = rc(a), [r2,c2] = rc(b); return a !== b && Math.abs(r1-r2) <= 1 && Math.abs(c1-c2) <= 1; };
+
+function cleanFixed(){
+  const f = {};
+  for(const [k,v] of Object.entries(cfg.fixed || {})){
+    if(+k < cfg.total && v >= 1 && v <= cfg.total) f[k] = v;
+  }
+  cfg.fixed = f;
+}
+
+function syncArrangement(){
+  if(!cfg.rows) cfg.rows = Math.ceil(cfg.total / cfg.cols);
+  if(cfg.rows * cfg.cols < cfg.total) cfg.rows = Math.ceil(cfg.total / cfg.cols);
+  cleanFixed();
+  arrangement = Array(cfg.total).fill(0);
+  for(const [k,v] of Object.entries(cfg.fixed)) arrangement[+k] = v;
+}
+
+function parseApart(){
+  const nums = [...new Set($("apart").value.split(/[\s,]+/).filter(Boolean).map(Number))];
+  const bad = nums.filter(n => !Number.isInteger(n) || n < 1 || n > cfg.total);
+  return { nums: nums.filter(n => !bad.includes(n)), bad };
+}
+
+function executeShuffle(){
+  cleanFixed();
+  const { nums, bad } = parseApart();
+  const fixedSeats = Object.keys(cfg.fixed).map(Number);
+  const fixedNums = Object.values(cfg.fixed);
+  const freeSeats = [...Array(cfg.total).keys()].filter(i => !fixedSeats.includes(i));
+  const freeNums = [...Array(cfg.total).keys()].map(i => i + 1).filter(n => !fixedNums.includes(n));
+
+  let best = null, ok = false;
+  for(let t = 0; t < 2000 && !ok; t++){
+    for(let i = freeNums.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [freeNums[i], freeNums[j]] = [freeNums[j], freeNums[i]]; }
+    const arr = Array(cfg.total).fill(0);
+    fixedSeats.forEach(s => arr[s] = cfg.fixed[s]);
+    freeSeats.forEach((s, i) => arr[s] = freeNums[i]);
+    const pos = {}; arr.forEach((n, i) => pos[n] = i);
+    ok = nums.every((a, i) => nums.slice(i + 1).every(b => !near(pos[a], pos[b])));
+    best = arr;
+  }
+  arrangement = best;
+  isShuffled = true;
+
+  const msgs = [];
+  if(bad.length) msgs.push(`범위 밖 번호(${bad.join(", ")})는 무시했어요.`);
+  if(!ok) msgs.push("떨어뜨릴 조건을 모두 만족하는 배치를 찾지 못했어요. 번호를 줄이거나 고정 자리를 풀어 보세요.");
+  $("msg").textContent = msgs.join(" ");
+  render(true);
+}
+
+function shuffleSeats(){
+  if(countdownEnabled){
+    const overlay = $("countdownOverlay");
+    const numEl = $("cdNum");
+    overlay.classList.remove("hidden");
+    let count = 3;
+    numEl.textContent = count;
+
+    const timer = setInterval(() => {
+      count--;
+      if(count > 0){
+        numEl.textContent = count;
+      } else {
+        clearInterval(timer);
+        overlay.classList.add("hidden");
+        executeShuffle();
+      }
+    }, 900);
+  } else {
+    executeShuffle();
+  }
+}
+
+/* ============ 화면 ============ */
+function render(animate){
+  const g = $("grid");
+  g.innerHTML = "";
+  g.style.setProperty("--cols", cfg.cols);
+  g.className = pair ? "" : "nopair";
+  for(let r = 0; r < cfg.rows; r++){
+    const row = document.createElement("div");
+    row.className = "r";
+    for(let c = 0; c < cfg.cols; c++){
+      const i = r * cfg.cols + c;
+      const s = document.createElement("div");
+      if(i >= cfg.total){
+        s.className = "seat none";
+        s.style.setProperty("--cols", cfg.cols);
+        if(pair && c % 2 === 1 && c < cfg.cols - 1) s.classList.add("pairgap");
+        row.appendChild(s);
+        continue;
+      }
+
+      const n = arrangement[i];
+      const isFixedSeat = !!cfg.fixed[i];
+
+      // 핵심 로직:
+      // 1. 관리자 모드(admin): 아직 안 섞었어도 고정한 자리의 번호(cfg.fixed[i])를 보여줌
+      // 2. 이미 섞은 후(isShuffled): 관리자가 아니더라도 모든 자리 번호를 보여줌
+      // 3. 관리자 나감 & 섞기 전(!isShuffled && !admin): 고정한 자리이든 상관없이 무조건 물음표(?)로 보임
+      let displayNum = 0;
+      if(admin){
+        displayNum = n || (isFixedSeat ? cfg.fixed[i] : 0);
+      } else if(isShuffled){
+        displayNum = n;
+      } else {
+        displayNum = 0;
+      }
+
+      s.className = "seat" + (displayNum ? "" : " empty") + (isFixedSeat ? " fixed" : "") + (animate ? " pop" : "");
+      s.style.setProperty("--cols", cfg.cols);
+      if(pair && c % 2 === 1 && c < cfg.cols - 1) s.classList.add("pairgap");
+      s.textContent = displayNum || "?";
+      s.dataset.i = i;
+      if(admin) s.tabIndex = 0;
+      row.appendChild(s);
+    }
+    g.appendChild(row);
+  }
+  const seatsN = cfg.rows * cfg.cols;
+  $("sizeInfo").textContent = `현재 설정: ${cfg.total}명 · ${cfg.rows}행 × ${cfg.cols}열 (${seatsN}칸` + (seatsN > cfg.total ? `, 빈자리 ${seatsN - cfg.total}칸)` : ")");
+  document.body.classList.toggle("is-admin", admin);
+  document.body.classList.toggle("is-shuffled", isShuffled);
+  $("adminPanel").hidden = !admin;
+  $("adminBtn").hidden = admin;
+}
+
+function fillAdminInputs(){ $("total").value = cfg.total; $("rows").value = cfg.rows; $("cols").value = cfg.cols; }
+
+/* ============ 암호화 ============ */
+function sha256js(str){
+  const rr = (v, a) => (v >>> a) | (v << (32 - a));
+  const bytes = [...new TextEncoder().encode(str)];
+  const bitLen = bytes.length * 8;
+  bytes.push(0x80);
+  while(bytes.length % 64 !== 56) bytes.push(0);
+  for(let i = 7; i >= 0; i--) bytes.push(i > 3 ? 0 : (bitLen >>> (i * 8)) & 255);
+  const K = [], H = [];
+  let isPrime = n => { for(let i = 2; i * i <= n; i++) if(n % i === 0) return false; return true; };
+  for(let n = 2, c = 0; c < 64; n++) if(isPrime(n)){
+    K[c] = (Math.pow(n, 1/3) % 1 * 4294967296) | 0;
+    if(c < 8) H[c] = (Math.pow(n, 1/2) % 1 * 4294967296) | 0;
+    c++;
+  }
+  for(let o = 0; o < bytes.length; o += 64){
+    const w = [];
+    for(let i = 0; i < 16; i++) w[i] = (bytes[o+i*4] << 24) | (bytes[o+i*4+1] << 16) | (bytes[o+i*4+2] << 8) | bytes[o+i*4+3];
+    for(let i = 16; i < 64; i++){
+      const s0 = rr(w[i-15], 7) ^ rr(w[i-15], 18) ^ (w[i-15] >>> 3);
+      const s1 = rr(w[i-2], 17) ^ rr(w[i-2], 19) ^ (w[i-2] >>> 10);
+      w[i] = (w[i-16] + s0 + w[i-7] + s1) | 0;
+    }
+    let [a,b,c,d,e,f,g,h] = H;
+    for(let i = 0; i < 64; i++){
+      const t1 = (h + (rr(e,6) ^ rr(e,11) ^ rr(e,25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0;
+      const t2 = ((rr(a,2) ^ rr(a,13) ^ rr(a,22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H[0] = (H[0]+a)|0; H[1] = (H[1]+b)|0; H[2] = (H[2]+c)|0; H[3] = (H[3]+d)|0;
+    H[4] = (H[4]+e)|0; H[5] = (H[5]+f)|0; H[6] = (H[6]+g)|0; H[7] = (H[7]+h)|0;
+  }
+  return H.map(x => (x >>> 0).toString(16).padStart(8, "0")).join("");
+}
+async function sha(text){
+  try{
+    if(window.crypto && crypto.subtle){
+      const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+    }
+  }catch(e){}
+  return sha256js(text);
+}
+
+/* ============ 이벤트 ============ */
+$("pairOn").onclick  = () => { pair = true;  $("pairOn").classList.add("on"); $("pairOff").classList.remove("on"); render(); };
+$("pairOff").onclick = () => { pair = false; $("pairOff").classList.add("on"); $("pairOn").classList.remove("on"); render(); };
+
+$("cdOn").onclick  = () => { countdownEnabled = true;  $("cdOn").classList.add("on"); $("cdOff").classList.remove("on"); };
+$("cdOff").onclick = () => { countdownEnabled = false; $("cdOff").classList.add("on"); $("cdOn").classList.remove("on"); };
+
+$("shuffleBtn").onclick = shuffleSeats;
+
+$("adminBtn").onclick = () => { $("pw").value = ""; $("pwErr").textContent = ""; $("pwDialog").showModal(); $("pw").focus(); };
+$("pwCancel").onclick = () => $("pwDialog").close();
+$("pwForm").onsubmit = async e => {
+  e.preventDefault();
+  if(await sha($("pw").value) === currentAdminHash){
+    admin = true; sessionStorage.setItem("admin", "1");
+    $("pwDialog").close(); render(); fillAdminInputs();
+  }else{
+    $("pwErr").textContent = "암호가 맞지 않아요. 다시 입력해 주세요.";
+    $("pw").select();
+  }
+};
+$("logout").onclick = () => { admin = false; sessionStorage.removeItem("admin"); render(); };
+
+// 비밀번호 변경 기능
+$("changePwBtn").onclick = () => {
+  $("oldPw").value = ""; $("newPw").value = ""; $("newPwConfirm").value = "";
+  $("changePwErr").textContent = ""; $("changePwSuccess").textContent = "";
+  $("changePwDialog").showModal(); $("oldPw").focus();
+};
+$("changePwCancel").onclick = () => $("changePwDialog").close();
+$("changePwForm").onsubmit = async e => {
+  e.preventDefault();
+  $("changePwErr").textContent = "";
+  $("changePwSuccess").textContent = "";
+
+  const oldVal = $("oldPw").value;
+  const newVal = $("newPw").value;
+  const confirmVal = $("newPwConfirm").value;
+
+  if(await sha(oldVal) !== currentAdminHash){
+    $("changePwErr").textContent = "기존 암호가 맞지 않습니다.";
+    $("oldPw").select();
+    return;
+  }
+
+  if(newVal !== confirmVal){
+    $("changePwErr").textContent = "새 암호와 암호 확인이 일치하지 않습니다.";
+    $("newPwConfirm").select();
+    return;
+  }
+
+  const newHash = await sha(newVal);
+  currentAdminHash = newHash;
+  localStorage.setItem("custom-admin-hash", newHash);
+  $("changePwSuccess").textContent = "비밀번호가 성공적으로 변경되었습니다!";
+  setTimeout(() => {
+    $("changePwDialog").close();
+  }, 1000);
+};
+
+async function applySize(){
+  let t = Math.min(100, Math.max(2, Math.floor(+$("total").value) || cfg.total));
+  let r = Math.min(15, Math.max(1, Math.floor(+$("rows").value) || cfg.rows));
+  let c = Math.min(12, Math.max(1, Math.floor(+$("cols").value) || cfg.cols));
+  let note = "";
+  if(t > r * c){
+    r = Math.ceil(t / c);
+    if(r > 15){ r = 15; c = Math.ceil(t / r); }
+    note = ` (자리가 모자라서 ${r}행 × ${c}열로 맞췄어요.)`;
+  }
+  cfg.total = t; cfg.rows = r; cfg.cols = c;
+  isShuffled = false;
+  syncArrangement();
+  await save();
+  render(); fillAdminInputs();
+  $("msg").textContent = "";
+  $("sizeMsg").textContent = `적용했어요: ${t}명, ${r}행 × ${c}열.` + note +
+    ((pair && c % 2) ? " 짝 있음에서는 열을 짝수로 하면 보기 좋아요." : "") +
+    " 번호를 다시 섞어 주세요.";
+}
+$("applySize").onclick = applySize;
+["total","rows","cols"].forEach(id => $(id).addEventListener("keydown", e => { if(e.key === "Enter") applySize(); }));
+
+let editing = null;
+function openSeat(i){
+  if(!admin) return;
+  editing = i;
+  const [r, c] = rc(i);
+  $("seatLabel").textContent = `${r + 1}행 ${c + 1}열에 고정할 번호 (비우면 해제)`;
+  $("seatNum").value = cfg.fixed[i] || "";
+  $("seatNum").max = cfg.total;
+  $("seatErr").textContent = "";
+  $("seatDialog").showModal(); $("seatNum").focus();
+}
+$("grid").addEventListener("click", e => { const s = e.target.closest(".seat"); if(s) openSeat(+s.dataset.i); });
+$("grid").addEventListener("keydown", e => { if(e.key === "Enter"){ const s = e.target.closest(".seat"); if(s) openSeat(+s.dataset.i); } });
+$("seatCancel").onclick = () => $("seatDialog").close();
+$("seatForm").onsubmit = async e => {
+  e.preventDefault();
+  const v = $("seatNum").value.trim();
+  if(v === ""){ delete cfg.fixed[editing]; }
+  else{
+    const n = +v;
+    if(!Number.isInteger(n) || n < 1 || n > cfg.total){ $("seatErr").textContent = `1부터 ${cfg.total} 사이의 번호를 입력해 주세요.`; return; }
+    for(const k of Object.keys(cfg.fixed)) if(cfg.fixed[k] === n) delete cfg.fixed[k];
+    cfg.fixed[editing] = n;
+  }
+  $("seatDialog").close();
+  const keep = arrangement.slice();
+  syncArrangement();
+  keep.forEach((n, i) => { if(!cfg.fixed[i] && n && !Object.values(cfg.fixed).includes(n)) arrangement[i] = n; });
+  await save(); render();
+};
+$("clearFixed").onclick = async () => {
+  if(!confirm("고정한 자리를 모두 해제할까요?")) return;
+  cfg.fixed = {}; syncArrangement(); await save(); render();
+};
+
+/* ============ 시작 ============ */
+await initStore();
+syncArrangement();
+fillAdminInputs();
+render();
+</script>
+</body>
+</html>
